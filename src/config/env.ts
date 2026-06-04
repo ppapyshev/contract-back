@@ -13,6 +13,22 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   FREE_ANALYSES_PER_MONTH: z.coerce.number().default(3),
+  STORAGE_MODE: z.enum(['database', 'local', 's3']).default('database'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().default('auto'),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_PUBLIC_URL: z.string().optional(),
+  GIGACHAT_AUTH_KEY: z.string().optional(),
+  GIGACHAT_SCOPE: z.string().default('GIGACHAT_API_PERS'),
+  GIGACHAT_MODEL: z.string().default('GigaChat'),
+  GIGACHAT_OAUTH_URL: z
+    .string()
+    .default('https://ngw.devices.sberbank.ru:9443/api/v2/oauth'),
+  GIGACHAT_API_URL: z
+    .string()
+    .default('https://gigachat.devices.sberbank.ru/api/v1'),
 });
 
 export const env = envSchema.parse(process.env);

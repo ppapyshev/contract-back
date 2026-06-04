@@ -1,46 +1,77 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { FastifyInstance } from 'fastify';
-import { v4 as uuidv4 } from 'uuid';
 
-import { env } from '../../config/env.js';
 import { requireAuth, getUserId } from '../../middleware/auth.js';
 import { sendSuccess } from '../../lib/response.js';
-import { prisma } from '../../lib/prisma.js';
-import { ForbiddenError } from '../../lib/errors.js';
+import { NotFoundError, ForbiddenError } from '../../lib/errors.js';
+import {
+  getFilePublicUrl,
+  readDocumentFileContent,
+  saveDocumentFile,
+} from '../../services/storage.service.js';
+
+function mapFileResponse(file: {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  path: string;
+}) {
+  return {
+    id: file.id,
+    uuid: file.id,
+    fileName: file.filename,
+    filename: file.filename,
+    fullUrl: getFilePublicUrl(file.id),
+    extension: path.extname(file.filename).replace('.', ''),
+    mimeType: file.mimeType,
+    size: file.size,
+  };
+}
 
 export async function filesRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', requireAuth);
+  app.get('/files/:id/content', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
 
-  app.post('/files/upload', async (request, reply) => {
+    const content = await readDocumentFileContent(id, userId);
+    if (!content) {
+      throw new NotFoundError('Файл не найден');
+    }
+
+    return reply
+      .header('Content-Type', content.mimeType)
+      .header('Content-Disposition', `inline; filename="${encodeURIComponent(content.filename)}"`)
+      .send(content.buffer);
+  });
+
+  app.post('/files/upload', { preHandler: requireAuth }, async (request, reply) => {
     const userId = getUserId(request);
     const data = await request.file();
     if (!data) throw new ForbiddenError('Файл не передан');
 
     const buffer = await data.toBuffer();
-    const ext = path.extname(data.filename) || '.bin';
-    const storedName = `${uuidv4()}${ext}`;
-    const uploadPath = path.join(env.UPLOAD_DIR, storedName);
-    await fs.mkdir(env.UPLOAD_DIR, { recursive: true });
-    await fs.writeFile(uploadPath, buffer);
+    const { file } = await saveDocumentFile(userId, buffer, data.filename, data.mimetype);
 
-    const file = await prisma.documentFile.create({
-      data: {
-        userId,
-        filename: data.filename,
-        mimeType: data.mimetype,
-        size: buffer.length,
-        path: uploadPath,
-      },
-    });
+    return sendSuccess(reply, mapFileResponse(file), 201);
+  });
 
-    return sendSuccess(reply, {
-      id: file.id,
-      filename: file.filename,
-      fullUrl: `${env.PUBLIC_URL}/uploads/${storedName}`,
-      mimeType: file.mimeType,
-      size: file.size,
-    }, 201);
+  app.post('/files/upload-multiple', { preHandler: requireAuth }, async (request, reply) => {
+    const userId = getUserId(request);
+    const parts = request.files();
+    const uploaded = [];
+
+    for await (const part of parts) {
+      const buffer = await part.toBuffer();
+      const { file } = await saveDocumentFile(userId, buffer, part.filename, part.mimetype);
+      uploaded.push(mapFileResponse(file));
+    }
+
+    if (uploaded.length === 0) {
+      throw new ForbiddenError('Файлы не переданы');
+    }
+
+    return sendSuccess(reply, uploaded, 201);
   });
 }

@@ -1,8 +1,13 @@
 import type { Document, DocRisk, RiskLevel } from '@prisma/client';
 
 import { prisma } from '../lib/prisma.js';
+import {
+  analyzeDocumentWithAi,
+  resolveDocumentText,
+  toPrismaRiskLevel,
+} from './document-ai.service.js';
+import { isGigaChatEnabled } from './gigachat.service.js';
 
-/** Заглушка анализа до подключения AI/OCR. Имитирует результат из mockDocuments. */
 const STUB_BY_TYPE: Record<string, { title: string; type: string; riskLevel: RiskLevel }> = {
   rent: { title: 'Договор аренды квартиры', type: 'Аренда', riskLevel: 'high' },
   services: { title: 'Договор оказания услуг', type: 'Услуги', riskLevel: 'medium' },
@@ -54,15 +59,7 @@ const DEFAULT_RISKS = [
   },
 ];
 
-export async function runDocumentAnalysis(documentId: string, originalText?: string): Promise<Document & { risks: DocRisk[] }> {
-  await prisma.document.update({
-    where: { id: documentId },
-    data: { status: 'processing' },
-  });
-
-  await delay(1500);
-
-  const text = originalText ?? '';
+async function runStubAnalysis(documentId: string, text: string) {
   const stubKey = detectStubType(text);
   const meta = STUB_BY_TYPE[stubKey] ?? STUB_BY_TYPE.default;
   const risksData = stubKey === 'rent' ? RENT_RISKS : DEFAULT_RISKS;
@@ -88,7 +85,7 @@ export async function runDocumentAnalysis(documentId: string, originalText?: str
 
   await prisma.docRisk.deleteMany({ where: { documentId } });
 
-  const doc = await prisma.document.update({
+  return prisma.document.update({
     where: { id: documentId },
     data: {
       status: 'completed',
@@ -106,8 +103,65 @@ export async function runDocumentAnalysis(documentId: string, originalText?: str
     },
     include: { risks: { orderBy: { sortOrder: 'asc' } } },
   });
+}
 
-  return doc;
+export async function runDocumentAnalysis(
+  documentId: string,
+  originalText?: string,
+): Promise<Document & { risks: DocRisk[] }> {
+  await prisma.document.update({
+    where: { id: documentId },
+    data: { status: 'processing' },
+  });
+
+  const text = await resolveDocumentText(documentId, originalText);
+
+  if (text.length > 50 && !text.startsWith('Текст договора недоступен')) {
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { originalText: text.slice(0, 80_000) },
+    });
+  }
+
+  if (isGigaChatEnabled()) {
+    try {
+      const ai = await analyzeDocumentWithAi(text, originalText);
+      if (ai) {
+        await prisma.docRisk.deleteMany({ where: { documentId } });
+
+        return prisma.document.update({
+          where: { id: documentId },
+          data: {
+            status: 'completed',
+            title: ai.title,
+            type: ai.type,
+            riskLevel: toPrismaRiskLevel(ai.riskLevel),
+            summary: ai.summary,
+            keyPoints: ai.keyPoints,
+            plainText: ai.plain,
+            originalText: ai.original ?? text,
+            analyzedAt: new Date(),
+            risks: {
+              create: ai.risks.map((r, i) => ({
+                level: toPrismaRiskLevel(r.level),
+                title: r.title,
+                clause: r.clause,
+                explanation: r.explanation,
+                suggestion: r.suggestion,
+                sortOrder: i,
+              })),
+            },
+          },
+          include: { risks: { orderBy: { sortOrder: 'asc' } } },
+        });
+      }
+    } catch (err) {
+      console.error('GigaChat analysis failed, using stub fallback', documentId, err);
+    }
+  }
+
+  await delay(800);
+  return runStubAnalysis(documentId, text);
 }
 
 function delay(ms: number) {

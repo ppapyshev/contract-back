@@ -107,8 +107,20 @@ model Document {
   user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   risks  DocRisk[]
   files  DocumentFile[]
+  chatMessages DocChatMessage[]
 
   @@index([userId, createdAt])
+}
+
+model DocChatMessage {
+  id         String   @id @default(uuid())
+  documentId String
+  role       String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
 }
 
 model DocRisk {
@@ -133,6 +145,7 @@ model DocumentFile {
   mimeType   String
   size       Int
   path       String
+  data       Bytes?
   createdAt  DateTime @default(now())
   document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 

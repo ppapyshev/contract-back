@@ -1,8 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import type { FastifyInstance } from "fastify";
-import { v4 as uuidv4 } from "uuid";
 
 import { env } from "../../config/env.js";
 import { requireAuth, getUserId } from "../../middleware/auth.js";
@@ -22,7 +18,13 @@ import {
   documentsQuerySchema,
   updateDocumentSchema,
   createFromTemplateSchema,
+  analyzeDocumentSchema,
+  compareDocumentSchema,
 } from "./documents.schemas.js";
+import {
+  resolveFilePublicUrl,
+  saveDocumentFile,
+} from "../../services/storage.service.js";
 
 export async function documentsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
@@ -118,6 +120,28 @@ export async function documentsRoutes(app: FastifyInstance) {
     return sendSuccess(reply, mapDocument(doc));
   });
 
+  app.put("/documents/:id", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const body = updateDocumentSchema.parse(request.body);
+
+    const existing = await prisma.document.findFirst({ where: { id, userId } });
+    if (!existing) throw new NotFoundError("Документ не найден");
+
+    const doc = await prisma.document.update({
+      where: { id },
+      data: { title: body.title },
+      include: { risks: { orderBy: { sortOrder: "asc" } } },
+    });
+    return sendSuccess(reply, mapDocument(doc));
+  });
+
+  app.delete("/documents", async (request, reply) => {
+    const userId = getUserId(request);
+    await prisma.document.deleteMany({ where: { userId } });
+    return sendSuccess(reply, { deleted: true });
+  });
+
   app.delete("/documents/:id", async (request, reply) => {
     const userId = getUserId(request);
     const { id } = request.params as { id: string };
@@ -125,6 +149,49 @@ export async function documentsRoutes(app: FastifyInstance) {
     if (!existing) throw new NotFoundError("Документ не найден");
     await prisma.document.delete({ where: { id } });
     return sendSuccess(reply, { deleted: true });
+  });
+
+  app.post("/documents/analyze", async (request, reply) => {
+    const userId = getUserId(request);
+    await assertCanAnalyze(userId);
+
+    const body = analyzeDocumentSchema.parse(request.body);
+    const files = await prisma.documentFile.findMany({
+      where: { id: { in: body.fileIds }, userId, documentId: null },
+    });
+
+    if (files.length !== body.fileIds.length) {
+      throw new ForbiddenError("Один или несколько файлов не найдены");
+    }
+
+    const title =
+      files[0]!.filename.replace(/\.[^.]+$/, "") || files[0]!.filename;
+    const isPdf = files.some((f) => f.mimeType.includes("pdf"));
+    const fileUrl = resolveFilePublicUrl(files[0]!.path);
+
+    const doc = await prisma.document.create({
+      data: {
+        userId,
+        title,
+        status: "pending",
+        sourceType: isPdf ? "pdf" : "image",
+        fileUrl,
+        files: { connect: body.fileIds.map((id) => ({ id })) },
+      },
+    });
+
+    await consumeAnalysis(userId);
+
+    const textHint = files.map((f) => f.filename).join(", ");
+    void runDocumentAnalysis(doc.id, textHint).catch((err) => {
+      console.error("Analysis failed", doc.id, err);
+      void prisma.document.update({
+        where: { id: doc.id },
+        data: { status: "failed" },
+      });
+    });
+
+    return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
   });
 
   app.post("/documents/upload", async (request, reply) => {
@@ -137,13 +204,13 @@ export async function documentsRoutes(app: FastifyInstance) {
     }
 
     const buffer = await data.toBuffer();
-    const ext = path.extname(data.filename) || ".bin";
-    const storedName = `${uuidv4()}${ext}`;
-    const uploadPath = path.join(env.UPLOAD_DIR, storedName);
-    await fs.mkdir(env.UPLOAD_DIR, { recursive: true });
-    await fs.writeFile(uploadPath, buffer);
-
     const title = (request.query as { title?: string }).title ?? data.filename;
+    const { file, publicUrl } = await saveDocumentFile(
+      userId,
+      buffer,
+      data.filename,
+      data.mimetype,
+    );
 
     const doc = await prisma.document.create({
       data: {
@@ -151,25 +218,16 @@ export async function documentsRoutes(app: FastifyInstance) {
         title,
         status: "pending",
         sourceType: data.mimetype?.includes("pdf") ? "pdf" : "image",
-        fileUrl: `${env.PUBLIC_URL}/uploads/${storedName}`,
-        files: {
-          create: {
-            userId,
-            filename: data.filename,
-            mimeType: data.mimetype,
-            size: buffer.length,
-            path: uploadPath,
-          },
-        },
+        fileUrl: publicUrl,
+        files: { connect: { id: file.id } },
       },
     });
 
     await consumeAnalysis(userId);
 
-    const textHint = data.filename;
-    void runDocumentAnalysis(doc.id, textHint).catch((err) => {
+    void runDocumentAnalysis(doc.id, data.filename).catch((err) => {
       console.error("Analysis failed", doc.id, err);
-      prisma.document.update({
+      void prisma.document.update({
         where: { id: doc.id },
         data: { status: "failed" },
       });
@@ -220,5 +278,60 @@ export async function documentsRoutes(app: FastifyInstance) {
     );
 
     return sendSuccess(reply, { id: doc.id, status: "processing" });
+  });
+
+  app.get("/documents/:id/export/pdf", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const doc = await prisma.document.findFirst({ where: { id, userId } });
+    if (!doc) throw new NotFoundError("Документ не найден");
+
+    const base = env.PUBLIC_URL.replace(/\/$/, "");
+    return sendSuccess(reply, {
+      url: `${base}/documents/${id}/export/pdf/download`,
+      message: "PDF-экспорт в разработке. Пока доступен текстовый отчёт.",
+    });
+  });
+
+  app.get("/documents/:id/share", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const doc = await prisma.document.findFirst({ where: { id, userId } });
+    if (!doc) throw new NotFoundError("Документ не найден");
+
+    const base = env.PUBLIC_URL.replace(/\/$/, "");
+    return sendSuccess(reply, {
+      url: `${base}/share/${id}`,
+      title: doc.title,
+    });
+  });
+
+  app.post("/documents/:id/compare", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    compareDocumentSchema.parse(request.body ?? {});
+
+    const doc = await prisma.document.findFirst({
+      where: { id, userId },
+      include: { risks: { orderBy: { sortOrder: "asc" } } },
+    });
+    if (!doc) throw new NotFoundError("Документ не найден");
+
+    return sendSuccess(reply, mapDocument(doc));
+  });
+
+  app.post("/documents/:id/referral", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const doc = await prisma.document.findFirst({ where: { id, userId } });
+    if (!doc) throw new NotFoundError("Документ не найден");
+
+    return sendSuccess(reply, {
+      sent: true,
+      message:
+        "Заявка принята. Юрист свяжется с вами по email в течение 1–2 рабочих дней.",
+      documentId: id,
+      userId,
+    });
   });
 }

@@ -18,6 +18,14 @@ services:
         value: ./uploads
       - key: FREE_ANALYSES_PER_MONTH
         value: 3
+      - key: STORAGE_MODE
+        value: database
+      - key: GIGACHAT_SCOPE
+        value: GIGACHAT_API_PERS
+      - key: GIGACHAT_MODEL
+        value: GigaChat
+      - key: GIGACHAT_AUTH_KEY
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: contract-db

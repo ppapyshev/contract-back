@@ -10,6 +10,7 @@ import Fastify from 'fastify';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { chatRoutes } from './modules/chat/chat.routes.js';
 import { documentsRoutes } from './modules/documents/documents.routes.js';
 import { filesRoutes } from './modules/files/files.routes.js';
 import { planRoutes } from './modules/plan/plan.routes.js';
@@ -43,6 +44,7 @@ export async function buildApp() {
   await app.register(authRoutes);
   await app.register(userRoutes);
   await app.register(documentsRoutes);
+  await app.register(chatRoutes);
   await app.register(templatesRoutes);
   await app.register(planRoutes);
   await app.register(systemRoutes);

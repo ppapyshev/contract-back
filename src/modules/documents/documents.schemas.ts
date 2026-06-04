@@ -13,6 +13,15 @@ export const updateDocumentSchema = z.object({
   title: z.string().min(1).max(300),
 });
 
+export const analyzeDocumentSchema = z.object({
+  fileIds: z.array(z.string().uuid()).min(1),
+});
+
+export const compareDocumentSchema = z.object({
+  documentId: z.string().uuid().optional(),
+  versionId: z.string().uuid().optional(),
+});
+
 export const createFromTemplateSchema = z.object({
   templateId: z.string().uuid(),
   title: z.string().max(300).optional(),

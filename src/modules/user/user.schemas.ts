@@ -10,6 +10,12 @@ export const updateProfileSchema = z.object({
   language: z.string().max(10).optional(),
 });
 
+export const notificationsSchema = z.object({
+  enabled: z.boolean().optional(),
+  emailEnabled: z.boolean().optional(),
+  pushEnabled: z.boolean().optional(),
+});
+
 export const onboardingSchema = z.object({
   roles: z.array(z.string()).default([]),
   topics: z.array(z.string()).default([]),

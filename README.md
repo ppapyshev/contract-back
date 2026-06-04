@@ -47,6 +47,9 @@ API: `http://localhost:3000`
 |-------|------|
 | GET | `/user/profile` |
 | PATCH | `/user/profile` |
+| PUT | `/user/profile` |
+| GET | `/user/notifications` |
+| PUT | `/user/notifications` — `{ enabled }` |
 | POST | `/user/onboarding` — `{ roles[], topics[] }` |
 | DELETE | `/user/documents` — удалить все документы |
 | DELETE | `/user/delete` |
@@ -59,16 +62,55 @@ API: `http://localhost:3000`
 | GET | `/documents/:id` |
 | GET | `/documents/:id/status` — polling обработки |
 | PATCH | `/documents/:id` — `{ title }` |
+| PUT | `/documents/:id` — `{ title }` |
+| DELETE | `/documents` — удалить все документы пользователя |
 | DELETE | `/documents/:id` |
 | POST | `/documents/upload` — multipart file |
+| POST | `/documents/analyze` — `{ fileIds: string[] }` после `/files/upload` |
 | POST | `/documents/from-template` — `{ templateId }` |
+| POST | `/documents/:id/reanalyze` |
+| GET | `/documents/:id/export/pdf` — `{ url }` |
+| GET | `/documents/:id/share` — `{ url, title }` |
+| POST | `/documents/:id/compare` |
+| POST | `/documents/:id/referral` — заявка юристу |
+| GET | `/documents/:id/chat/messages` |
+| POST | `/documents/:id/chat` — `{ message }` |
+
+### Файлы
+| GET | `/files/:id/content` — скачать файл (Bearer) |
+| POST | `/files/upload` — один файл |
+| POST | `/files/upload-multiple` — несколько файлов |
 
 ### Шаблоны, план, система
 | GET | `/templates`, `/templates/popular`, `/templates/:id` |
 | GET | `/plan` |
 | POST | `/plan/subscribe`, `/plan/cancel` |
 | GET | `/system/settings`, `/system/docs` |
-| POST | `/files/upload` |
+
+## Хранение файлов
+
+По умолчанию **`STORAGE_MODE=database`** — файлы сохраняются в PostgreSQL (`DocumentFile.data`). Работает на Render free **без карты**, переживает рестарт API.
+
+| Режим | Переменная | Когда |
+|-------|------------|-------|
+| **database** | `STORAGE_MODE=database` | Render free, по умолчанию |
+| local | `STORAGE_MODE=local` | Dev, папка `uploads/` |
+| s3 | `STORAGE_MODE=s3` + `S3_*` | R2 / AWS S3 |
+
+Лимит Render Postgres free — ~1 ГБ. Для фото/PDF договоров хватает на старте.
+
+Скачивание: `GET /files/:id/content` (с Bearer-токеном).
+
+### Опционально: Cloudflare R2 (нужна карта)
+
+```env
+STORAGE_MODE=s3
+S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+S3_BUCKET=yasnodogovor-files
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_PUBLIC_URL=https://pub-xxxx.r2.dev
+```
 
 ## Деплой (только бэкенд)
 
@@ -93,7 +135,7 @@ npm run db:seed
 
 6. Проверка: `https://<имя>.onrender.com/health`
 
-**Ограничения free tier:** сервис засыпает без запросов (~30–60 с на первый ответ), файлы в `uploads/` не сохраняются между рестартами. Для тестов auth/шаблонов/анализа — достаточно.
+**Ограничения free tier:** сервис засыпает без запросов (~30–60 с на первый ответ). Файлы в Postgres сохраняются; лимит БД ~1 ГБ.
 
 ### Docker (Fly.io, Railway, VPS)
 
@@ -113,16 +155,36 @@ docker run -p 3000:3000 \
 | `DATABASE_URL` | да | от Render Postgres / Neon |
 | `JWT_SECRET` | да | min 16 символов |
 | `PUBLIC_URL` | да | `https://api.example.com` |
+| `STORAGE_MODE` | нет | `database` (по умолчанию), `local`, `s3` |
+| `S3_*` | нет | только при `STORAGE_MODE=s3` |
+| `GIGACHAT_AUTH_KEY` | нет | Authorization key из developers.sber.ru |
+| `GIGACHAT_MODEL` | нет | `GigaChat` (по умолчанию) |
 | `PORT` | нет | Render задаёт сам |
 | `HOST` | нет | `0.0.0.0` |
 
 ---
 
+## GigaChat (ИИ)
+
+Если задан **`GIGACHAT_AUTH_KEY`**, анализ договоров и чат работают через [GigaChat API](https://developers.sber.ru/docs/ru/gigachat/overview):
+
+1. [developers.sber.ru](https://developers.sber.ru/) → GigaChat API → **Настройка API**
+2. Скопируйте **Authorization key** (не Client ID)
+3. Добавьте в `.env` / Render:
+
+```env
+GIGACHAT_AUTH_KEY=ваш_authorization_key
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_MODEL=GigaChat
+```
+
+Без ключа — fallback на локальную заглушку анализа.
+
+**OCR:** фото и PDF распознаются через **GigaChat Files API** (нужен `GIGACHAT_AUTH_KEY`). Текст сохраняется в `originalText` после анализа.
+
 ## Анализ документов
 
-Сейчас — **заглушка** (без OCR/AI): асинхронная обработка ~1.5 с, результат по ключевым словам в тексте. После подключения AI замените `src/services/analysis.service.ts`.
-
-**ИИ-чат** в этом этапе не реализован (по ТЗ).
+Асинхронный анализ через GigaChat (JSON: риски, резюме, простое объяснение). История чата сохраняется в `DocChatMessage`.
 
 ## Лимиты Freemium
 
@@ -133,7 +195,7 @@ docker run -p 3000:3000 \
 ```
 src/
   modules/   auth, user, documents, templates, plan, system, files
-  services/  analysis, plan, mappers
+  services/  analysis, gigachat, document-ai, ocr, plan, storage
   middleware/
 prisma/      schema, seed
 ```
