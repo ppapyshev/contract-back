@@ -98,7 +98,7 @@ export async function documentsRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const doc = await prisma.document.findFirst({
       where: { id, userId },
-      select: { id: true, status: true, title: true },
+      select: { id: true, status: true, title: true, summary: true },
     });
     if (!doc) throw new NotFoundError("Документ не найден");
     return sendSuccess(reply, doc);

@@ -6,6 +6,11 @@ import {
   resolveDocumentText,
   toPrismaRiskLevel,
 } from './document-ai.service.js';
+import {
+  classifyDocumentContent,
+  hasContractHeuristics,
+  isTextInsufficientForAnalysis,
+} from './document-validation.service.js';
 import { isGigaChatEnabled } from './gigachat.service.js';
 
 const STUB_BY_TYPE: Record<string, { title: string; type: string; riskLevel: RiskLevel }> = {
@@ -59,6 +64,20 @@ const DEFAULT_RISKS = [
   },
 ];
 
+async function failDocument(documentId: string, reason: string) {
+  return prisma.document.update({
+    where: { id: documentId },
+    data: {
+      status: 'failed',
+      summary: reason,
+      keyPoints: [],
+      plainText: null,
+      analyzedAt: new Date(),
+    },
+    include: { risks: { orderBy: { sortOrder: 'asc' } } },
+  });
+}
+
 async function runStubAnalysis(documentId: string, text: string) {
   const stubKey = detectStubType(text);
   const meta = STUB_BY_TYPE[stubKey] ?? STUB_BY_TYPE.default;
@@ -95,7 +114,7 @@ async function runStubAnalysis(documentId: string, text: string) {
       summary,
       keyPoints,
       plainText: plain,
-      originalText: text || 'Текст документа будет доступен после подключения OCR.',
+      originalText: text,
       analyzedAt: new Date(),
       risks: {
         create: risksData.map((r, i) => ({ ...r, sortOrder: i })),
@@ -114,56 +133,73 @@ export async function runDocumentAnalysis(
     data: { status: 'processing' },
   });
 
-  const text = await resolveDocumentText(documentId, originalText);
+  try {
+    const text = await resolveDocumentText(documentId, originalText);
 
-  if (text.length > 50 && !text.startsWith('Текст договора недоступен')) {
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { originalText: text.slice(0, 80_000) },
-    });
-  }
-
-  if (isGigaChatEnabled()) {
-    try {
-      const ai = await analyzeDocumentWithAi(text, originalText);
-      if (ai) {
-        await prisma.docRisk.deleteMany({ where: { documentId } });
-
-        return prisma.document.update({
-          where: { id: documentId },
-          data: {
-            status: 'completed',
-            title: ai.title,
-            type: ai.type,
-            riskLevel: toPrismaRiskLevel(ai.riskLevel),
-            summary: ai.summary,
-            keyPoints: ai.keyPoints,
-            plainText: ai.plain,
-            originalText: ai.original ?? text,
-            analyzedAt: new Date(),
-            risks: {
-              create: ai.risks.map((r, i) => ({
-                level: toPrismaRiskLevel(r.level),
-                title: r.title,
-                clause: r.clause,
-                explanation: r.explanation,
-                suggestion: r.suggestion,
-                sortOrder: i,
-              })),
-            },
-          },
-          include: { risks: { orderBy: { sortOrder: 'asc' } } },
-        });
-      }
-    } catch (err) {
-      console.error('GigaChat analysis failed, using stub fallback', documentId, err);
+    if (!isTextInsufficientForAnalysis(text)) {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { originalText: text.slice(0, 80_000) },
+      });
     }
+
+    const classification = await classifyDocumentContent(text);
+    if (!classification.isContract) {
+      return failDocument(
+        documentId,
+        classification.reason ??
+          'Загруженный файл не похож на договор. Пожалуйста, загрузите договор, соглашение или PDF.',
+      );
+    }
+
+    if (isGigaChatEnabled()) {
+      const ai = await analyzeDocumentWithAi(text, originalText);
+      if (!ai) {
+        return failDocument(documentId, 'Не удалось проанализировать документ. Попробуйте ещё раз.');
+      }
+
+      await prisma.docRisk.deleteMany({ where: { documentId } });
+
+      return prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: 'completed',
+          title: ai.title,
+          type: ai.type,
+          riskLevel: toPrismaRiskLevel(ai.riskLevel),
+          summary: ai.summary,
+          keyPoints: ai.keyPoints,
+          plainText: ai.plain,
+          originalText: ai.original ?? text,
+          analyzedAt: new Date(),
+          risks: {
+            create: ai.risks.map((r, i) => ({
+              level: toPrismaRiskLevel(r.level),
+              title: r.title,
+              clause: r.clause,
+              explanation: r.explanation,
+              suggestion: r.suggestion,
+              sortOrder: i,
+            })),
+          },
+        },
+        include: { risks: { orderBy: { sortOrder: 'asc' } } },
+      });
+    }
+
+    if (hasContractHeuristics(text)) {
+      return runStubAnalysis(documentId, text);
+    }
+
+    return failDocument(
+      documentId,
+      'Файл не похож на договор. Загрузите договор, соглашение или PDF с текстом.',
+    );
+  } catch (err) {
+    console.error('Document analysis failed', documentId, err);
+    return failDocument(
+      documentId,
+      'Не удалось обработать документ. Проверьте качество фото или загрузите PDF.',
+    );
   }
-
-  await delay(800);
-  return runStubAnalysis(documentId, text);
-}
-
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }

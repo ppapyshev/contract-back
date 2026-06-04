@@ -1,17 +1,17 @@
-import type { RiskLevel } from '@prisma/client';
-import { z } from 'zod';
+import type { RiskLevel } from "@prisma/client";
+import { z } from "zod";
 
-import { prisma } from '../lib/prisma.js';
-import { extractTextWithGigaChatOcr, isOcrCandidate } from './ocr.service.js';
-import { readDocumentFileContent } from './storage.service.js';
+import { prisma } from "../lib/prisma.js";
+import { extractTextWithGigaChatOcr, isOcrCandidate } from "./ocr.service.js";
+import { readDocumentFileContent } from "./storage.service.js";
 import {
   extractJsonFromResponse,
   gigachatChat,
   isGigaChatEnabled,
   type GigaChatMessage,
-} from './gigachat.service.js';
+} from "./gigachat.service.js";
 
-const riskLevelSchema = z.enum(['high', 'medium', 'low']);
+const riskLevelSchema = z.enum(["high", "medium", "low"]);
 
 export const documentAnalysisSchema = z.object({
   title: z.string().min(1).max(300),
@@ -58,13 +58,18 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — юридический ассистен
     }
   ]
 }
-Пиши по-русски. Не выдумывай конкретные пункты, если текста нет — дай общие рекомендации для типа договора.`;
+Пиши по-русски. Используй ТОЛЬКО факты из предоставленного текста.
+Не выдумывай пункты, суммы, даты и условия, которых нет в документе.
+Если текст не является договором — не анализируй, это обрабатывается отдельно.`;
 
 const CHAT_SYSTEM_PROMPT = `Ты — ИИ-помощник по договору в приложении «Простой Договор».
 Отвечай кратко, по-русски, простым языком. Ссылайся на пункты договора, если они есть в контексте.
 Не заменяешь юриста — напоминай об этом при серьёзных рисках.`;
 
-export async function resolveDocumentText(documentId: string, hint?: string): Promise<string> {
+export async function resolveDocumentText(
+  documentId: string,
+  hint?: string,
+): Promise<string> {
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
     include: { files: true },
@@ -75,7 +80,11 @@ export async function resolveDocumentText(documentId: string, hint?: string): Pr
   }
 
   const textParts: string[] = [];
-  const ocrFiles: Array<{ buffer: Buffer; filename: string; mimeType: string }> = [];
+  const ocrFiles: Array<{
+    buffer: Buffer;
+    filename: string;
+    mimeType: string;
+  }> = [];
 
   for (const file of doc?.files ?? []) {
     const content = await readDocumentFileContent(file.id);
@@ -85,19 +94,24 @@ export async function resolveDocumentText(documentId: string, hint?: string): Pr
     }
 
     if (
-      content.mimeType.startsWith('text/') ||
-      content.filename.endsWith('.txt') ||
-      content.filename.endsWith('.md')
+      content.mimeType.startsWith("text/") ||
+      content.filename.endsWith(".txt") ||
+      content.filename.endsWith(".md")
     ) {
-      textParts.push(content.buffer.toString('utf-8').slice(0, 50_000));
-    } else if (isOcrCandidate(content.mimeType, content.filename) && isGigaChatEnabled()) {
+      textParts.push(content.buffer.toString("utf-8").slice(0, 50_000));
+    } else if (
+      isOcrCandidate(content.mimeType, content.filename) &&
+      isGigaChatEnabled()
+    ) {
       ocrFiles.push({
         buffer: content.buffer,
         filename: content.filename,
         mimeType: content.mimeType,
       });
     } else {
-      textParts.push(`[Вложение: ${content.filename}, тип ${content.mimeType}]`);
+      textParts.push(
+        `[Вложение: ${content.filename}, тип ${content.mimeType}]`,
+      );
     }
   }
 
@@ -108,18 +122,18 @@ export async function resolveDocumentText(documentId: string, hint?: string): Pr
         textParts.unshift(ocrText.trim());
       }
     } catch (err) {
-      console.error('GigaChat OCR failed', documentId, err);
+      console.error("GigaChat OCR failed", documentId, err);
     }
   }
 
   if (textParts.length > 0) {
-    return textParts.join('\n\n').slice(0, 80_000);
+    return textParts.join("\n\n").slice(0, 80_000);
   }
 
   return (
     hint?.trim() ||
     doc?.title ||
-    'Текст договора недоступен. Загрузите фото, PDF или текстовый файл.'
+    "Текст договора недоступен. Загрузите фото, PDF или текстовый файл."
   );
 }
 
@@ -132,26 +146,29 @@ export async function analyzeDocumentWithAi(
   }
 
   const userContent = [
-    hint ? `Подсказка / имя файла: ${hint}` : '',
-    'Текст договора:',
+    hint ? `Подсказка / имя файла: ${hint}` : "",
+    "Текст договора:",
     documentText.slice(0, 60_000),
   ]
     .filter(Boolean)
-    .join('\n\n');
+    .join("\n\n");
 
   const messages: GigaChatMessage[] = [
-    { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
-    { role: 'user', content: userContent },
+    { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+    { role: "user", content: userContent },
   ];
 
-  const raw = await gigachatChat(messages, { maxTokens: 4096, temperature: 0.2 });
+  const raw = await gigachatChat(messages, {
+    maxTokens: 4096,
+    temperature: 0.2,
+  });
   const jsonText = extractJsonFromResponse(raw);
 
   let json: unknown;
   try {
     json = JSON.parse(jsonText);
   } catch {
-    throw new Error('GigaChat returned non-JSON analysis response');
+    throw new Error("GigaChat returned non-JSON analysis response");
   }
 
   const parsed = documentAnalysisSchema.safeParse(json);
@@ -170,16 +187,18 @@ export async function chatAboutDocumentWithAi(
 ): Promise<string> {
   const messages: GigaChatMessage[] = [
     {
-      role: 'system',
+      role: "system",
       content: `${CHAT_SYSTEM_PROMPT}\n\nКонтекст документа:\n${documentContext.slice(0, 12_000)}`,
     },
-    ...history.filter(m => m.role !== 'system'),
-    { role: 'user', content: userMessage },
+    ...history.filter((m) => m.role !== "system"),
+    { role: "user", content: userMessage },
   ];
 
   return gigachatChat(messages, { maxTokens: 1024, temperature: 0.4 });
 }
 
-export function toPrismaRiskLevel(level: DocumentAnalysisResult['riskLevel']): RiskLevel {
+export function toPrismaRiskLevel(
+  level: DocumentAnalysisResult["riskLevel"],
+): RiskLevel {
   return level;
 }
