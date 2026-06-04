@@ -19,7 +19,7 @@ services:
       - key: FREE_ANALYSES_PER_MONTH
         value: 3
       - key: UNLIMITED_EMAILS
-        value: steeleltt@gmail.com
+        value: steellett@gmail.com
       - key: STORAGE_MODE
         value: database
       - key: GIGACHAT_SCOPE
