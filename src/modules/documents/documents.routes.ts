@@ -9,7 +9,11 @@ import {
   assertCanAnalyze,
   consumeAnalysis,
 } from "../../services/plan.service.js";
-import { runDocumentAnalysis } from "../../services/analysis.service.js";
+import {
+  handleBackgroundAnalysisFailure,
+  runDocumentAnalysis,
+} from "../../services/analysis.service.js";
+import { mapDocumentStatus } from "../../services/document-status.mapper.js";
 import {
   mapDocument,
   mapDocumentCard,
@@ -98,10 +102,17 @@ export async function documentsRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const doc = await prisma.document.findFirst({
       where: { id, userId },
-      select: { id: true, status: true, title: true, summary: true },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        summary: true,
+        errorCode: true,
+        errorDetail: true,
+      },
     });
     if (!doc) throw new NotFoundError("Документ не найден");
-    return sendSuccess(reply, doc);
+    return sendSuccess(reply, mapDocumentStatus(doc));
   });
 
   app.patch("/documents/:id", async (request, reply) => {
@@ -183,13 +194,9 @@ export async function documentsRoutes(app: FastifyInstance) {
     await consumeAnalysis(userId);
 
     const textHint = files.map((f) => f.filename).join(", ");
-    void runDocumentAnalysis(doc.id, textHint).catch((err) => {
-      console.error("Analysis failed", doc.id, err);
-      void prisma.document.update({
-        where: { id: doc.id },
-        data: { status: "failed" },
-      });
-    });
+    void runDocumentAnalysis(doc.id, textHint).catch((err) =>
+      handleBackgroundAnalysisFailure(doc.id, err),
+    );
 
     return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
   });
@@ -225,13 +232,9 @@ export async function documentsRoutes(app: FastifyInstance) {
 
     await consumeAnalysis(userId);
 
-    void runDocumentAnalysis(doc.id, data.filename).catch((err) => {
-      console.error("Analysis failed", doc.id, err);
-      void prisma.document.update({
-        where: { id: doc.id },
-        data: { status: "failed" },
-      });
-    });
+    void runDocumentAnalysis(doc.id, data.filename).catch((err) =>
+      handleBackgroundAnalysisFailure(doc.id, err),
+    );
 
     return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
   });
@@ -259,7 +262,9 @@ export async function documentsRoutes(app: FastifyInstance) {
     });
 
     await consumeAnalysis(userId);
-    void runDocumentAnalysis(doc.id, template.content).catch(console.error);
+    void runDocumentAnalysis(doc.id, template.content).catch((err) =>
+      handleBackgroundAnalysisFailure(doc.id, err),
+    );
 
     return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
   });
@@ -273,8 +278,8 @@ export async function documentsRoutes(app: FastifyInstance) {
     if (!doc) throw new NotFoundError("Документ не найден");
 
     await consumeAnalysis(userId);
-    void runDocumentAnalysis(doc.id, doc.originalText ?? "").catch(
-      console.error,
+    void runDocumentAnalysis(doc.id, doc.originalText ?? "").catch((err) =>
+      handleBackgroundAnalysisFailure(doc.id, err),
     );
 
     return sendSuccess(reply, { id: doc.id, status: "processing" });

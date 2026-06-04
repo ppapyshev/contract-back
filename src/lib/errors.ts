@@ -3,9 +3,24 @@ export class AppError extends Error {
     public statusCode: number,
     message: string,
     public errors: Record<string, string[]> | null = null,
+    public code?: string,
+    public detail?: string,
   ) {
     super(message);
     this.name = 'AppError';
+  }
+}
+
+/** Ошибка внешнего сервиса (GigaChat, S3 и т.д.) */
+export class ServiceError extends AppError {
+  constructor(
+    message: string,
+    public serviceCode: string,
+    detail?: string,
+    statusCode = 502,
+  ) {
+    super(statusCode, message, null, serviceCode, detail);
+    this.name = 'ServiceError';
   }
 }
 

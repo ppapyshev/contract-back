@@ -23,6 +23,9 @@ export function mapDocument(doc: Document & { risks?: DocRisk[] }) {
     original: doc.originalText ?? '',
     analyzedAt: doc.analyzedAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
+    ...(doc.status === 'failed'
+      ? { errorCode: doc.errorCode ?? null }
+      : {}),
   };
 }
 

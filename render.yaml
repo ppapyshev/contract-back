@@ -34,6 +34,9 @@ services:
         generateValue: true
       - key: PUBLIC_URL
         sync: false
+      # Раскомментируйте для отладки: detail в JSON-ответах API
+      # - key: EXPOSE_ERROR_DETAILS
+      #   value: true
 
 databases:
   - name: contract-db

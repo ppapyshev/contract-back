@@ -29,6 +29,10 @@ const envSchema = z.object({
   GIGACHAT_API_URL: z
     .string()
     .default('https://gigachat.devices.sberbank.ru/api/v1'),
+  /** true — в ответах API отдавать detail/stack; false — скрыть в production */
+  EXPOSE_ERROR_DETAILS: z
+    .enum(['true', 'false'])
+    .optional(),
 });
 
 export const env = envSchema.parse(process.env);

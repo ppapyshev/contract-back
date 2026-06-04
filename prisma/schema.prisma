@@ -94,6 +94,8 @@ model Document {
   status      DocumentStatus @default(pending)
   riskLevel   RiskLevel?
   summary     String?
+  errorCode   String?
+  errorDetail String?        @db.Text
   keyPoints   String[]       @default([])
   plainText   String?
   originalText String?

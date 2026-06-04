@@ -11,6 +11,7 @@ import {
   hasContractHeuristics,
   isTextInsufficientForAnalysis,
 } from './document-validation.service.js';
+import { serializeError, userMessageFromError } from '../lib/errorUtil.js';
 import { isGigaChatEnabled } from './gigachat.service.js';
 
 const STUB_BY_TYPE: Record<string, { title: string; type: string; riskLevel: RiskLevel }> = {
@@ -64,18 +65,36 @@ const DEFAULT_RISKS = [
   },
 ];
 
-async function failDocument(documentId: string, reason: string) {
+async function failDocument(
+  documentId: string,
+  reason: string,
+  options?: { err?: unknown; code?: string },
+) {
+  const stored = options?.err ? serializeError(options.err) : null;
   return prisma.document.update({
     where: { id: documentId },
     data: {
       status: 'failed',
       summary: reason,
+      errorCode: options?.code ?? stored?.code ?? 'ANALYSIS_FAILED',
+      errorDetail: stored?.detail ?? null,
       keyPoints: [],
       plainText: null,
       analyzedAt: new Date(),
     },
     include: { risks: { orderBy: { sortOrder: 'asc' } } },
   });
+}
+
+/** Фоновый анализ упал — сохраняем причину в документ */
+export async function handleBackgroundAnalysisFailure(
+  documentId: string,
+  err: unknown,
+) {
+  console.error('Document analysis failed', documentId, err);
+  const fallback =
+    'Не удалось обработать документ. Проверьте качество фото или загрузите PDF.';
+  return failDocument(documentId, userMessageFromError(err, fallback), { err });
 }
 
 async function runStubAnalysis(documentId: string, text: string) {
@@ -108,6 +127,8 @@ async function runStubAnalysis(documentId: string, text: string) {
     where: { id: documentId },
     data: {
       status: 'completed',
+      errorCode: null,
+      errorDetail: null,
       title: meta.title,
       type: meta.type,
       riskLevel: meta.riskLevel,
@@ -149,13 +170,16 @@ export async function runDocumentAnalysis(
         documentId,
         classification.reason ??
           'Загруженный файл не похож на договор. Пожалуйста, загрузите договор, соглашение или PDF.',
+        { code: 'NOT_A_CONTRACT' },
       );
     }
 
     if (isGigaChatEnabled()) {
       const ai = await analyzeDocumentWithAi(text, originalText);
       if (!ai) {
-        return failDocument(documentId, 'Не удалось проанализировать документ. Попробуйте ещё раз.');
+        return failDocument(documentId, 'Не удалось проанализировать документ. Попробуйте ещё раз.', {
+          code: 'GIGACHAT_EMPTY',
+        });
       }
 
       await prisma.docRisk.deleteMany({ where: { documentId } });
@@ -164,6 +188,8 @@ export async function runDocumentAnalysis(
         where: { id: documentId },
         data: {
           status: 'completed',
+          errorCode: null,
+          errorDetail: null,
           title: ai.title,
           type: ai.type,
           riskLevel: toPrismaRiskLevel(ai.riskLevel),
@@ -194,12 +220,16 @@ export async function runDocumentAnalysis(
     return failDocument(
       documentId,
       'Файл не похож на договор. Загрузите договор, соглашение или PDF с текстом.',
+      { code: 'NOT_A_CONTRACT' },
     );
   } catch (err) {
-    console.error('Document analysis failed', documentId, err);
     return failDocument(
       documentId,
-      'Не удалось обработать документ. Проверьте качество фото или загрузите PDF.',
+      userMessageFromError(
+        err,
+        'Не удалось обработать документ. Проверьте качество фото или загрузите PDF.',
+      ),
+      { err },
     );
   }
 }

@@ -186,6 +186,30 @@ GIGACHAT_MODEL=GigaChat
 
 Асинхронный анализ через GigaChat (JSON: риски, резюме, простое объяснение). История чата сохраняется в `DocChatMessage`.
 
+## Ошибки API
+
+Все ответы с ошибкой:
+
+```json
+{
+  "success": false,
+  "message": "Текст для пользователя",
+  "errors": { "email": ["..."] },
+  "data": null,
+  "error": {
+    "code": "GIGACHAT_OAUTH",
+    "detail": "полный текст (только в dev или при EXPOSE_ERROR_DETAILS=true)",
+    "requestId": "uuid-запроса"
+  }
+}
+```
+
+- **Локально** (`NODE_ENV=development`) в `error.detail` приходит полный текст ошибки.
+- **Render:** добавьте `EXPOSE_ERROR_DETAILS=true`, чтобы видеть `detail` в ответах; в логах Render всегда есть `requestId` и stack.
+- **Анализ документа** (`GET /documents/:id/status` при `failed`): `summary` — сообщение в приложении, `errorCode` — код (`GIGACHAT_CHAT`, `NOT_A_CONTRACT`, …), `errorDetail` — техническое описание (если включён expose).
+
+После деплоя: `npx prisma db push` (поля `errorCode`, `errorDetail` в `Document`).
+
 ## Лимиты Freemium
 
 `FREE_ANALYSES_PER_MONTH` (по умолчанию 3). Премиум — безлимит (`POST /plan/subscribe` в тестовом режиме).
