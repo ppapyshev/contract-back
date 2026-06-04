@@ -8,7 +8,7 @@ import { prisma } from '../../lib/prisma.js';
 export async function planRoutes(app: FastifyInstance) {
   app.get('/plan', { preHandler: [requireAuth] }, async (request, reply) => {
     const plan = await getOrCreatePlan(getUserId(request));
-    return sendSuccess(reply, formatPlanResponse(plan));
+    return sendSuccess(reply, await formatPlanResponse(plan));
   });
 
   app.post('/plan/subscribe', { preHandler: [requireAuth] }, async (request, reply) => {
@@ -34,7 +34,7 @@ export async function planRoutes(app: FastifyInstance) {
     });
 
     return sendSuccess(reply, {
-      ...formatPlanResponse(plan),
+      ...(await formatPlanResponse(plan)),
       message: 'Подписка активирована (тестовый режим, без оплаты)',
     });
   });
@@ -45,6 +45,6 @@ export async function planRoutes(app: FastifyInstance) {
       where: { userId },
       data: { plan: 'free', billing: null, premiumUntil: null },
     });
-    return sendSuccess(reply, formatPlanResponse(plan));
+    return sendSuccess(reply, await formatPlanResponse(plan));
   });
 }

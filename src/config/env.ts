@@ -13,6 +13,8 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   FREE_ANALYSES_PER_MONTH: z.coerce.number().default(3),
+  /** Email через запятую — без лимита анализов (например steeleltt@gmail.com) */
+  UNLIMITED_EMAILS: z.string().optional(),
   STORAGE_MODE: z.enum(['database', 'local', 's3']).default('database'),
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default('auto'),

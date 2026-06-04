@@ -4,6 +4,27 @@ import { env } from '../config/env.js';
 import { ForbiddenError } from '../lib/errors.js';
 import { prisma } from '../lib/prisma.js';
 
+const unlimitedEmailSet = () =>
+  new Set(
+    (env.UNLIMITED_EMAILS ?? '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+export async function isUnlimitedUser(userId: string): Promise<boolean> {
+  const allowed = unlimitedEmailSet();
+  if (!allowed.size) return false;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+
+  const email = user?.email?.trim().toLowerCase();
+  return Boolean(email && allowed.has(email));
+}
+
 export async function getOrCreatePlan(userId: string): Promise<UserPlan> {
   const existing = await prisma.userPlan.findUnique({ where: { userId } });
   if (existing) {
@@ -34,7 +55,7 @@ export function isPremiumActive(plan: UserPlan): boolean {
 
 export async function assertCanAnalyze(userId: string): Promise<UserPlan> {
   const plan = await getOrCreatePlan(userId);
-  if (isPremiumActive(plan)) return plan;
+  if (isPremiumActive(plan) || (await isUnlimitedUser(userId))) return plan;
 
   if (plan.used >= env.FREE_ANALYSES_PER_MONTH) {
     throw new ForbiddenError('Лимит бесплатных анализов исчерпан');
@@ -44,7 +65,7 @@ export async function assertCanAnalyze(userId: string): Promise<UserPlan> {
 
 export async function consumeAnalysis(userId: string): Promise<void> {
   const plan = await getOrCreatePlan(userId);
-  if (isPremiumActive(plan)) return;
+  if (isPremiumActive(plan) || (await isUnlimitedUser(userId))) return;
 
   await prisma.userPlan.update({
     where: { userId },
@@ -52,16 +73,19 @@ export async function consumeAnalysis(userId: string): Promise<void> {
   });
 }
 
-export function formatPlanResponse(plan: UserPlan) {
+export async function formatPlanResponse(plan: UserPlan) {
   const premium = isPremiumActive(plan);
+  const unlimited = await isUnlimitedUser(plan.userId);
+  const noLimits = premium || unlimited;
+
   return {
-    plan: premium ? 'premium' : 'free',
+    plan: noLimits ? 'premium' : 'free',
     billing: plan.billing ?? undefined,
     used: plan.used,
     periodStart: plan.periodStart.toISOString(),
     premiumUntil: plan.premiumUntil?.toISOString(),
     limit: env.FREE_ANALYSES_PER_MONTH,
-    remaining: premium ? null : Math.max(0, env.FREE_ANALYSES_PER_MONTH - plan.used),
-    canAnalyze: premium || plan.used < env.FREE_ANALYSES_PER_MONTH,
+    remaining: noLimits ? null : Math.max(0, env.FREE_ANALYSES_PER_MONTH - plan.used),
+    canAnalyze: noLimits || plan.used < env.FREE_ANALYSES_PER_MONTH,
   };
 }
