@@ -5,8 +5,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: npm install && npm run build
-    preDeployCommand: npm run release
-    startCommand: npm start
+    startCommand: npm run release && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
