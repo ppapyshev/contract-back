@@ -86,6 +86,23 @@ async function failDocument(
   });
 }
 
+/** Загруженный файл не является договором — отдельный статус для клиента */
+async function rejectNotContract(documentId: string, reason: string, code = 'NOT_A_CONTRACT') {
+  return prisma.document.update({
+    where: { id: documentId },
+    data: {
+      status: 'not_contract',
+      summary: reason,
+      errorCode: code,
+      errorDetail: null,
+      keyPoints: [],
+      plainText: null,
+      analyzedAt: new Date(),
+    },
+    include: { risks: { orderBy: { sortOrder: 'asc' } } },
+  });
+}
+
 /** Фоновый анализ упал — сохраняем причину в документ */
 export async function handleBackgroundAnalysisFailure(
   documentId: string,
@@ -166,11 +183,10 @@ export async function runDocumentAnalysis(
 
     const classification = await classifyDocumentContent(text);
     if (!classification.isContract) {
-      return failDocument(
+      return rejectNotContract(
         documentId,
         classification.reason ??
           'Загруженный файл не похож на договор. Пожалуйста, загрузите договор, соглашение или PDF.',
-        { code: 'NOT_A_CONTRACT' },
       );
     }
 
@@ -217,10 +233,9 @@ export async function runDocumentAnalysis(
       return runStubAnalysis(documentId, text);
     }
 
-    return failDocument(
+    return rejectNotContract(
       documentId,
       'Файл не похож на договор. Загрузите договор, соглашение или PDF с текстом.',
-      { code: 'NOT_A_CONTRACT' },
     );
   } catch (err) {
     return failDocument(

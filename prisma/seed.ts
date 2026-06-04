@@ -2,6 +2,8 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// --- Шаблоны временно отключены ---
+/*
 const templates = [
   {
     title: "Договор аренды",
@@ -72,6 +74,7 @@ const templates = [
     content: "РАСПИСКА в получении денежных средств ...",
   },
 ];
+*/
 
 const systemDocs = [
   {
@@ -98,14 +101,14 @@ const systemDocs = [
 ];
 
 async function main() {
-  for (const t of templates) {
-    const existing = await prisma.template.findFirst({
-      where: { title: t.title },
-    });
-    if (!existing) {
-      await prisma.template.create({ data: t });
-    }
-  }
+  // for (const t of templates) {
+  //   const existing = await prisma.template.findFirst({
+  //     where: { title: t.title },
+  //   });
+  //   if (!existing) {
+  //     await prisma.template.create({ data: t });
+  //   }
+  // }
 
   for (const d of systemDocs) {
     await prisma.systemDoc.upsert({

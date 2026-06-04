@@ -15,7 +15,7 @@ import { documentsRoutes } from './modules/documents/documents.routes.js';
 import { filesRoutes } from './modules/files/files.routes.js';
 import { planRoutes } from './modules/plan/plan.routes.js';
 import { systemRoutes } from './modules/system/system.routes.js';
-import { templatesRoutes } from './modules/templates/templates.routes.js';
+// import { templatesRoutes } from './modules/templates/templates.routes.js';
 import { userRoutes } from './modules/user/user.routes.js';
 
 export async function buildApp() {
@@ -45,7 +45,7 @@ export async function buildApp() {
   await app.register(userRoutes);
   await app.register(documentsRoutes);
   await app.register(chatRoutes);
-  await app.register(templatesRoutes);
+  // await app.register(templatesRoutes);
   await app.register(planRoutes);
   await app.register(systemRoutes);
   await app.register(filesRoutes);

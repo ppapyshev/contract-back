@@ -21,7 +21,7 @@ import {
 import {
   documentsQuerySchema,
   updateDocumentSchema,
-  createFromTemplateSchema,
+  // createFromTemplateSchema,
   analyzeDocumentSchema,
   compareDocumentSchema,
 } from "./documents.schemas.js";
@@ -239,35 +239,36 @@ export async function documentsRoutes(app: FastifyInstance) {
     return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
   });
 
-  app.post("/documents/from-template", async (request, reply) => {
-    const userId = getUserId(request);
-    await assertCanAnalyze(userId);
-
-    const body = createFromTemplateSchema.parse(request.body);
-    const template = await prisma.template.findUnique({
-      where: { id: body.templateId },
-    });
-    if (!template) throw new NotFoundError("Шаблон не найден");
-
-    const doc = await prisma.document.create({
-      data: {
-        userId,
-        title: body.title ?? template.title,
-        type: template.category,
-        status: "pending",
-        sourceType: "template",
-        templateId: template.id,
-        originalText: template.content,
-      },
-    });
-
-    await consumeAnalysis(userId);
-    void runDocumentAnalysis(doc.id, template.content).catch((err) =>
-      handleBackgroundAnalysisFailure(doc.id, err),
-    );
-
-    return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
-  });
+  // --- Шаблоны временно отключены ---
+  // app.post("/documents/from-template", async (request, reply) => {
+  //   const userId = getUserId(request);
+  //   await assertCanAnalyze(userId);
+  //
+  //   const body = createFromTemplateSchema.parse(request.body);
+  //   const template = await prisma.template.findUnique({
+  //     where: { id: body.templateId },
+  //   });
+  //   if (!template) throw new NotFoundError("Шаблон не найден");
+  //
+  //   const doc = await prisma.document.create({
+  //     data: {
+  //       userId,
+  //       title: body.title ?? template.title,
+  //       type: template.category,
+  //       status: "pending",
+  //       sourceType: "template",
+  //       templateId: template.id,
+  //       originalText: template.content,
+  //     },
+  //   });
+  //
+  //   await consumeAnalysis(userId);
+  //   void runDocumentAnalysis(doc.id, template.content).catch((err) =>
+  //     handleBackgroundAnalysisFailure(doc.id, err),
+  //   );
+  //
+  //   return sendSuccess(reply, { id: doc.id, status: "processing" }, 201);
+  // });
 
   app.post("/documents/:id/reanalyze", async (request, reply) => {
     const userId = getUserId(request);

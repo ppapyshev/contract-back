@@ -23,7 +23,7 @@ export function mapDocument(doc: Document & { risks?: DocRisk[] }) {
     original: doc.originalText ?? '',
     analyzedAt: doc.analyzedAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
-    ...(doc.status === 'failed'
+    ...(doc.status === 'failed' || doc.status === 'not_contract'
       ? { errorCode: doc.errorCode ?? null }
       : {}),
   };

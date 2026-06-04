@@ -24,6 +24,7 @@ enum DocumentStatus {
   processing
   completed
   failed
+  not_contract
 }
 
 enum PlanType {

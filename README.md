@@ -206,7 +206,10 @@ GIGACHAT_MODEL=GigaChat
 
 - **Локально** (`NODE_ENV=development`) в `error.detail` приходит полный текст ошибки.
 - **Render:** добавьте `EXPOSE_ERROR_DETAILS=true`, чтобы видеть `detail` в ответах; в логах Render всегда есть `requestId` и stack.
-- **Анализ документа** (`GET /documents/:id/status` при `failed`): `summary` — сообщение в приложении, `errorCode` — код (`GIGACHAT_CHAT`, `NOT_A_CONTRACT`, …), `errorDetail` — техническое описание (если включён expose).
+- **Анализ документа** (`GET /documents/:id/status`):
+  - `status: "not_contract"` — файл не договор (`errorCode: NOT_A_CONTRACT`), отдельно от технических сбоев;
+  - `status: "failed"` — ошибка обработки (`GIGACHAT_*`, `ANALYSIS_FAILED`, …);
+  - в обоих случаях `summary` — текст для пользователя, `errorDetail` — при `EXPOSE_ERROR_DETAILS=true`.
 
 После деплоя: `npx prisma db push` (поля `errorCode`, `errorDetail` в `Document`).
 

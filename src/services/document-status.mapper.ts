@@ -20,7 +20,7 @@ export function mapDocumentStatus(doc: Pick<
     summary: doc.summary,
   };
 
-  if (doc.status === 'failed') {
+  if (doc.status === 'failed' || doc.status === 'not_contract') {
     payload.errorCode = doc.errorCode ?? null;
     if (shouldExposeErrorDetails() && doc.errorDetail) {
       payload.errorDetail = doc.errorDetail;

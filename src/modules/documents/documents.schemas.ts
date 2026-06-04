@@ -22,7 +22,7 @@ export const compareDocumentSchema = z.object({
   versionId: z.string().uuid().optional(),
 });
 
-export const createFromTemplateSchema = z.object({
-  templateId: z.string().uuid(),
-  title: z.string().max(300).optional(),
-});
+// export const createFromTemplateSchema = z.object({
+//   templateId: z.string().uuid(),
+//   title: z.string().max(300).optional(),
+// });
