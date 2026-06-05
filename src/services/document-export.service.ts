@@ -78,7 +78,7 @@ export async function buildDocumentPdfBuffer(
     const chunks: Buffer[] = [];
     const pdf = new PDFDocument({ margin: 48, size: 'A4' });
 
-    pdf.on('data', chunk => chunks.push(chunk as Buffer));
+    pdf.on('data', (chunk: Buffer) => chunks.push(chunk));
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
 
