@@ -213,7 +213,7 @@ GIGACHAT_MODEL=GigaChat
   - `status: "failed"` — ошибка обработки (`GIGACHAT_*`, `ANALYSIS_FAILED`, …);
   - в обоих случаях `summary` — текст для пользователя, `errorDetail` — при `EXPOSE_ERROR_DETAILS=true`.
 
-После деплоя: `npx prisma db push` (поля `errorCode`, `errorDetail` в `Document`).
+На Render схема применяется автоматически (`npm run release` → `prisma db push --accept-data-loss`).
 
 ## Лимиты Freemium
 
