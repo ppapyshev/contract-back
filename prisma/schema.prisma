@@ -103,6 +103,7 @@ model Document {
   sourceType  String         @default("upload")
   templateId  String?
   fileUrl     String?
+  shareToken  String?        @unique
   analyzedAt  DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt

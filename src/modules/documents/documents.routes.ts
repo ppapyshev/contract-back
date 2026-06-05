@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 
-import { env } from "../../config/env.js";
 import { requireAuth, getUserId } from "../../middleware/auth.js";
 import { sendSuccess } from "../../lib/response.js";
 import { prisma } from "../../lib/prisma.js";
@@ -25,6 +24,14 @@ import {
   analyzeDocumentSchema,
   compareDocumentSchema,
 } from "./documents.schemas.js";
+import {
+  buildDocumentPdfBuffer,
+  buildExportPdfUrl,
+  buildPdfFileName,
+  buildShareUrl,
+  ensureShareToken,
+  getOwnedCompletedDocument,
+} from "../../services/document-export.service.js";
 import {
   resolveFilePublicUrl,
   saveDocumentFile,
@@ -289,25 +296,38 @@ export async function documentsRoutes(app: FastifyInstance) {
   app.get("/documents/:id/export/pdf", async (request, reply) => {
     const userId = getUserId(request);
     const { id } = request.params as { id: string };
-    const doc = await prisma.document.findFirst({ where: { id, userId } });
-    if (!doc) throw new NotFoundError("Документ не найден");
+    const doc = await getOwnedCompletedDocument(userId, id);
 
-    const base = env.PUBLIC_URL.replace(/\/$/, "");
     return sendSuccess(reply, {
-      url: `${base}/documents/${id}/export/pdf/download`,
-      message: "PDF-экспорт в разработке. Пока доступен текстовый отчёт.",
+      url: buildExportPdfUrl(id),
+      title: doc.title,
+      fileName: buildPdfFileName(doc.title),
     });
+  });
+
+  app.get("/documents/:id/export/pdf/download", async (request, reply) => {
+    const userId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const doc = await getOwnedCompletedDocument(userId, id);
+    const pdf = await buildDocumentPdfBuffer(doc);
+
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(buildPdfFileName(doc.title))}"`,
+      )
+      .send(pdf);
   });
 
   app.get("/documents/:id/share", async (request, reply) => {
     const userId = getUserId(request);
     const { id } = request.params as { id: string };
-    const doc = await prisma.document.findFirst({ where: { id, userId } });
-    if (!doc) throw new NotFoundError("Документ не найден");
+    const doc = await getOwnedCompletedDocument(userId, id);
+    const shareToken = await ensureShareToken(doc);
 
-    const base = env.PUBLIC_URL.replace(/\/$/, "");
     return sendSuccess(reply, {
-      url: `${base}/share/${id}`,
+      url: buildShareUrl(shareToken),
       title: doc.title,
     });
   });

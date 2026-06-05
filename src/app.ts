@@ -13,6 +13,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { chatRoutes } from './modules/chat/chat.routes.js';
 import { documentsRoutes } from './modules/documents/documents.routes.js';
 import { filesRoutes } from './modules/files/files.routes.js';
+import { shareRoutes } from './modules/share/share.routes.js';
 import { planRoutes } from './modules/plan/plan.routes.js';
 import { systemRoutes } from './modules/system/system.routes.js';
 // import { templatesRoutes } from './modules/templates/templates.routes.js';
@@ -46,6 +47,7 @@ export async function buildApp() {
   await app.register(documentsRoutes);
   await app.register(chatRoutes);
   // await app.register(templatesRoutes);
+  await app.register(shareRoutes);
   await app.register(planRoutes);
   await app.register(systemRoutes);
   await app.register(filesRoutes);

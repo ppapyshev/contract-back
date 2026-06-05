@@ -69,8 +69,10 @@ API: `http://localhost:3000`
 | POST | `/documents/analyze` — `{ fileIds: string[] }` после `/files/upload` |
 | POST | `/documents/from-template` — `{ templateId }` |
 | POST | `/documents/:id/reanalyze` |
-| GET | `/documents/:id/export/pdf` — `{ url }` |
-| GET | `/documents/:id/share` — `{ url, title }` |
+| GET | `/documents/:id/export/pdf` — `{ url, title, fileName }` |
+| GET | `/documents/:id/export/pdf/download` — PDF-файл (Bearer) |
+| GET | `/documents/:id/share` — `{ url, title }`, создаёт `shareToken` |
+| GET | `/share/:token` — публичный просмотр анализа (JSON или HTML) |
 | POST | `/documents/:id/compare` |
 | POST | `/documents/:id/referral` — заявка юристу |
 | GET | `/documents/:id/chat/messages` |

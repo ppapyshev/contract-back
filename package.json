@@ -26,8 +26,10 @@
     "@types/bcrypt": "5.0.2",
     "@types/node": "22.15.21",
     "bcrypt": "6.0.0",
+    "dejavu-fonts-ttf": "^2.37.3",
     "dotenv": "16.5.0",
     "fastify": "5.3.3",
+    "pdfkit": "^0.18.0",
     "prisma": "6.19.3",
     "tsx": "4.19.4",
     "typescript": "5.8.3",
@@ -39,5 +41,8 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/pdfkit": "^0.17.6"
   }
 }
