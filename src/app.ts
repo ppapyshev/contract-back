@@ -40,7 +40,12 @@ export async function buildApp() {
 
   app.setErrorHandler(errorHandler);
 
-  app.get('/health', async () => ({ ok: true, service: 'contract-back' }));
+  app.get('/health', async () => ({
+    ok: true,
+    service: 'contract-back',
+    version: '1.1.0',
+    features: ['pdf-export', 'public-share', 'not-contract-status'],
+  }));
 
   await app.register(authRoutes);
   await app.register(userRoutes);

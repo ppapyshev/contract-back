@@ -328,6 +328,7 @@ export async function documentsRoutes(app: FastifyInstance) {
 
     return sendSuccess(reply, {
       url: buildShareUrl(shareToken),
+      shareToken,
       title: doc.title,
     });
   });

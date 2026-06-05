@@ -8,14 +8,27 @@ import {
   renderShareHtml,
 } from '../../services/document-export.service.js';
 
+async function findSharedDocument(token: string) {
+  const normalized = token.replace(/-/g, '');
+
+  return prisma.document.findFirst({
+    where: {
+      status: 'completed',
+      OR: [
+        { shareToken: token },
+        { shareToken: normalized },
+        { id: token },
+      ],
+    },
+    include: { risks: { orderBy: { sortOrder: 'asc' } } },
+  });
+}
+
 export async function shareRoutes(app: FastifyInstance) {
   app.get('/share/:token', async (request, reply) => {
     const { token } = request.params as { token: string };
 
-    const doc = await prisma.document.findFirst({
-      where: { shareToken: token, status: 'completed' },
-      include: { risks: { orderBy: { sortOrder: 'asc' } } },
-    });
+    const doc = await findSharedDocument(token);
 
     if (!doc) throw new NotFoundError('Ссылка недействительна или документ недоступен');
 
